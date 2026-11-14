@@ -1,97 +1,414 @@
-# T-Display
-墨水屏日历，采用三色4.2寸墨水屏，展示基本月历信息，支持农历、公共假期、倒计日、天气（实时天气、每日天气）、课程表展示。
+# T-Display 墨水屏日历
 
-## Prepare & Meterial
-1. esp32开发板(建议lolin32 lite,其他esp32开发板亦可)<br>
-2. 4.2寸三色墨水屏(400*300)。
-3. 通用墨水屏驱动板。
-4. 锂电池,需要做ph2.0接头，建议购买带保护板的电池。(推荐603048, 900mah)
-5. 金属底座亚克力台卡,95*80mm。
-6. 轻触开关,(12\*12\*7.3,带键帽)
-7. 工具:电烙铁、电线若干。
+三色 4.2 寸墨水屏桌历固件，ESP32 + Arduino（PlatformIO）实现。展示月历、农历、节气、公共假期、天气（实时 / 每日）、倒数日、日期 Tag、课程表；平时深度休眠，靠按键或定时器唤醒，锂电池供电。
 
-## Manufacture Guide:
-1. 开发板接线<br>
-    * 墨水屏驱动板
-        * Busy->4
-        * RST->16
-        * DC->17
-        * CS->5
-        * SCK->18
-        * SDA->23
-        * GND->GND
-        * VCC->3V
-    * 其他
-        * 按钮->(PIN_14, GND)
-        * LED->22(板载)
-        * 电池ADC->32
-2. 三色墨水屏排线插入时注意针脚方向,屏幕排线和驱动板排线1号针脚均是悬空,注意对齐。
-3. 电池接口需要是ph2.0,且注意正负极(开发板上有标注),如果电池的正负极反了,可以用镊子调整电池插头。
-    1. 可选：电池电压检测电路，需要通过两个相同的大电阻（建议500K以上）串联，通过分压进行检测电池电压。如图
-    <img src="./assets/img/battery_adc.png" width="30%"><br>
-4. 烧录固件<br>
-    使用ESP32的烧录工具flash_download_tool烧录固件. [Flash Download Tools](https://www.espressif.com/en/support/download/other-tools?keys=flash+download+tools)
-    1. 选择烧录的文件和烧录地址（bootloader.bin与partitions.bin烧录过一次后，就不需要重复烧录了）
-    2. 选择Flash的配置信息
-    3. 选择连接的串口以及波特率（波特率可以根据实际情况调整）
-    4. 擦除Flash。
-    5. 开始烧录。<br>
-    <span style="color:red">注：文件前面一定要打勾，否则不会刷进flash的！！！</span><br>
-    （参考下图）<br>
-    <img src="./assets/img/flash_download_tool_guide.png" width="70%">
-5. 安装盒，3D打印，用PLA或ABS均可。[E-ink box2 v22.3mf](./assets/file/E-ink%20box2%20v22.3mf)
+本文档同时是**新手上手教程**，按 §0 → §7 顺序做完就能跑起来。
 
-## Button Operation Guide:
-1. **单点**  
-    如果处在休眠中,唤醒系统,并刷新月历。
-    如果处在运行中,强制刷新/切换日历。
-    如果处在配置中,不做任何处理。
-2. **双击**  
-    系统正常运行中,双击进入系统配置。(并强制停止WIFI相关操作,如获取天气。)
-    系统配置状态中,双击重启系统。
-3. **长按**  
-    系统运行中,长按清除配置信息(WIFI密钥除外)和缓存,并重启。
+## 目录
 
-## LED Indicator: 
-(板载LED,PIN-22)
-1. 快闪: LED每秒闪约两次，系统启动中(正在连接WIFI)
-2. 常亮: WIFI连接完成。
-3. 慢闪: LED每两秒闪一次，WIFI连接失败（10秒钟后休眠）。
-4. 三短闪一长灭: 系统配置中。（3分钟后超时休眠）
-5. 熄灭: 系统休眠。
+- [0. 新手最短路径](#0-新手最短路径)
+- [1. 硬件清单](#1-硬件清单实测配置)
+- [2. 开发环境搭建](#2-开发环境搭建macos)
+- [3. 选对编译环境（重要）](#3-选对编译环境重要)
+- [4. 接线与焊接](#4-接线与焊接)
+- [5. 烧录](#5-烧录)
+- [6. 首次使用与配网](#6-首次使用与配网)
+- [7. 按键与 LED 语义](#7-按键与-led-语义)
+- [8. 工作原理与功耗](#8-工作原理与功耗)
+- [9. 故障排查](#9-故障排查)
+- [10. 构建与发布](#10-构建与发布)
+- [11. 针对实物的代码调整](#11-针对实物的代码调整)
+- [附录](#附录)
 
-## Web Config Guide:
-通过在开机状态下(LED常亮)双击,即可进入配置状态,这时系统会生成一个名为T-Display的ap,默认密码为:password。(默认超时时间为180秒)
-连接上ap后会直接弹出配置页面。(或者直接通过浏览器输入地址 http://192.168.4.1进入)。
-配置页面:
-1. Config Wifi. Wifi配置  
-    进入配置wifi页面,选择搜索到的ap,并输入密码,并保存。
-2. Setup. 系统配置  
-    * 周首日:
-        * 0: 周日(默认); 1: 周一;
-    * 和风天气:
-        * 和风天气Host：输入在和风天气Host。（例如：******.re.qweatherapi.com, 具体值在自己的和风天气控制台可以查到<br>
-        * 输入和风天气的API Key：输入和风天气Key。（如果Key置空,天气将不会被刷新。）<br>
-        * 天气类型：0:每日天气（默认，每天凌晨刷新一次）; 1: 实时天气(每两个小时刷新一次天气)<br>
-        * 位置ID：城市id或者经纬度 例1: 101010100 例2: 116.41,39.92 <br>
-        [城市id列表](./assets/file/China-City-List-latest.csv) <br>
-    * 倒数日:<br>输入倒数日名称和日期,名称不能超过4个中文字符,时间以yyyyMMdd的格式填入。配置正确的话,日历每天会显示倒数“距****还有**天”。如果倒数日名称为空,系统将不显示倒数日信息。
-    * 日期Tag:<br>
-        1. 输入格式，yyyyMMddx，yyyy为年，每年显示设为0000，MM为月份，每月显示设为00，dd为日期，x为tag的图标（a:书签；b：金钱；c：笑脸；d：警告）。例如：00000015b，每年每月15日旁边显示$符号；00000312a，每年3月12日，显示书签符号。
-        2. 最多可以设置三个tag，中间以分号隔开。例如：00000015b;00000312a
-    * 课程表:<br>
-        输入格式，分多段，每段用“；”隔开。
-        1. 课程数段。"000"，三位数字，分别代表上午、下午、晚上课程数，不可省略。如：“430”，代表上午4课，下午三课，晚上无课。
-        2. 每日课程（多段）。首位为星期数，后接当日的课程，以“，”分隔。如：“二,数学,语文,英语,体育,音乐,德法,”，表示周二的课程为数学、语文...等。
-        3. 样例: 430;一,语文,数学,体育,美术,科学,综合;二,数学,语文,英语,体育,音乐,德法;三,数学,英语,科学,语文,体育,书法,音乐;四,语文,数学,信息,劳动,德法,体育;五,英语,语文,数学,美术,心理,体育;
-        4. 注意：分隔用的“,”“;”，必须为英文符号，不可用中文符号。
-    * 保存配置后，系统自动重启。
-3. Update. OTA升级  
-    此项需要在浏览器内完成,通过ip地址访问配置页面,然后进入Update,选择固件文件后上传,等待。刷新完成后,页面会有成功提示。
-4. Restart. 重启  
-    在所有配置完后,需要重启生效。(也可以在配置状态下,双击按钮重启)
-5. Info. 系统信息
-    可以监控系统的硬件情况,也可以在里面清除配置的Wifi密钥。
-6. Exit. 退出  
-    退出配置状态。
+---
 
+## 0. 新手最短路径
+
+1. 把墨水屏驱动板的 8 根线按 [§4.1](#41-接线表) 接到开发板（**先只插 USB 试机，确认固件在跑再接屏**）。
+2. VS Code 打开本目录，底部状态栏点 `z98 (tdisplay)` 确认环境是 **z98**。
+3. 按 `⌃⌥U`（Control+Option+U）——自动编译 + 烧录 + 复位。
+4. 屏幕白闪几下 = 刷出来了。
+5. 配 WiFi：新固件第一次上电会自动放出 `T-Display` 热点（密码 `password`），手机连上后浏览器打开 `http://192.168.4.1` → `Param` 填和风天气参数。详见 [§6](#6-首次使用与配网)。
+
+之后每次改完代码，只需要重复第 3 步。
+
+> 仓库当前已按「USB 台架」配置好：`BATTERY_CHECK = 0`（[§4.7](#47-电池与电压检测台架调试必读)）、`ESP32_DEVKITC` 板型（[§4.6](#46-led)）、`default_envs = z98`（[§3](#3-选对编译环境重要)）。**装电池正式使用前，务必把 `BATTERY_CHECK` 改回 `1` 再烧一次。**
+
+---
+
+## 1. 硬件清单（实测配置）
+
+| 部件 | 实际型号 | 实测参数 |
+|---|---|---|
+| 主控板 | ESP32-DevKitC-1 V4（Type-C，已焊排针） | 模组 ESP32-WROVER，芯片 `ESP32-D0WDQ6 rev v1.0`，**4MB Flash / 无 PSRAM**，晶振 40MHz |
+| USB 转串口 | Silicon Labs **CP2102** | VID:PID `10C4:EA60`，macOS 免驱，枚举为 `/dev/cu.usbserial-0001`，支持 DTR/RTS 自动进下载模式 |
+| 墨水屏 | 4.2 寸三色（红/黑/白）400×300 | 型号 **GDEY042Z98**，24P FPC 排线（`P420010-MF1-A`） |
+| 驱动板 | 通用墨水屏驱动板（紫色 8P） | 引脚 `BUSY / RST / DC / CS / SCK / SDA / GND / 5-3.3V` |
+| 按键 | 轻触开关 12×12×7.3 | 接 `IO14` ↔ `GND`，**无需外部电阻**（固件已开内部上拉） |
+| 电池 | 603048 带保护板（可选） | PH2.0 接头，电压检测需 2×500K 分压 |
+| 结构件 | 金属底座亚克力台卡 95×80mm；3D 打印外壳 | [E-ink box2 v22.3mf](./assets/file/E-ink%20box2%20v22.3mf) |
+
+其他 ESP32 板也能用，只要 GPIO 引得出 `4/5/16/17/18/23/14/32`。注意 **GPIO 6–11 接了内置 Flash，任何情况都不能占用**。
+
+---
+
+## 2. 开发环境搭建（macOS）
+
+### 2.1 VS Code + PlatformIO 扩展
+
+装好 VS Code 后，在扩展面板搜 `PlatformIO IDE` 安装。
+
+如果扩展市场下载失败（国内常见 `read ECONNRESET`），改用官方 Release 的 VSIX 离线安装：
+
+```bash
+curl -L -o /tmp/platformio-ide.vsix \
+  https://github.com/platformio/platformio-vscode-ide/releases/download/v3.3.4/platformio-ide-3.3.4.vsix
+"/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" \
+  --install-extension /tmp/platformio-ide.vsix --force
+```
+
+扩展首次激活会自行下载一份 PlatformIO Core 到 `~/.platformio/penv`，无需干预。
+
+顺手把 `code` 命令加进 PATH（`/usr/local/bin` 需要 sudo，放 homebrew 更省事）：
+
+```bash
+ln -s "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code" /opt/homebrew/bin/code
+```
+
+### 2.2 命令行 PlatformIO（可选，和扩展互不影响）
+
+```bash
+brew install platformio      # 得到 pio / platformio
+pio --version
+```
+
+### 2.3 工具链
+
+[platformio.ini](./platformio.ini) 已锁定 `platformio/espressif32@6.13.0`。第一次编译会自动下载：
+
+- `framework-arduinoespressif32`（约 200MB）
+- `toolchain-xtensa-esp32`（约 100MB+）
+- `tool-esptoolpy`（烧录 / 复位用）
+
+**首次全量编译约 6–7 分钟，之后增量编译 15 秒左右**，所以第一次按 `⌃⌥U` 别以为卡住了。
+
+### 2.4 串口驱动
+
+| 板子上的芯片 | macOS 处理 |
+|---|---|
+| CP2102 / CP2104 | 系统自带，免驱（本机即此情况） |
+| CH340 / CH341 | `brew install --cask wch-ch34x-usb-serial-driver`，装完需在「系统设置 → 隐私与安全性」放行并重启 |
+| ESP32-S3/C3 原生 USB | CDC-ACM，免驱 |
+
+插上板子后用 `pio device list` 确认出现 `/dev/cu.usbserial*`。
+
+---
+
+## 3. 选对编译环境（重要）
+
+四个环境的代码完全一样，**只有墨水屏驱动型号不同**，选错的症状是屏幕不刷或花屏：
+
+| 环境 | `SI_DRIVER` | 驱动类 | 屏型号 |
+|---|---|---|---|
+| **`z98`** ← 本项目当前硬件 | 98 | `GxEPD2_420c_GDEY042Z98` | GDEY042Z98（400×300 三色） |
+| `z21` | 21 | `GxEPD2_420c_Z21` | 4.2in Z21 |
+| `z15` | 15 | `GxEPD2_420c` | 4.2in Z15 老款 |
+| `1680` | 1680 | `GxEPD2_420c_1680` | 4.2in 1680 驱动款 |
+
+驱动类映射见 [include/GxEPD2_display_selection_new_style.h:27](./include/GxEPD2_display_selection_new_style.h#L27)。
+
+**VS Code 底部状态栏的环境选择器一定要选 `z98`**：显示 `Default (tdisplay)` 时，Build/Upload 会把四个环境**全部重编一遍**（每个都要重编 Arduino 框架，合计约 25 分钟）。
+
+切换方法：点状态栏 `Default (tdisplay)` → 选 `z98`，或 `⌘⇧P` → `PlatformIO: Pick Project Environment`。
+[platformio.ini](./platformio.ini) 里的 `default_envs` 已改为 `z98`，重新打开工程即生效。
+
+---
+
+## 4. 接线与焊接
+
+### 4.1 接线表
+
+引脚定义在 [include/wiring.h](./include/wiring.h)，固件写死，改线必须同步改这里。
+
+| 驱动板 | 开发板丝印 | 方向 | 说明 |
+|---|---|---|---|
+| `BUSY` | `4` | 屏 → MCU | 忙信号。**漏接的症状是初始化一直卡住** |
+| `RST` | `16` | MCU → 屏 | 复位 |
+| `DC` | `17` | MCU → 屏 | 数据 / 命令选择 |
+| `CS` | `5` | MCU → 屏 | SPI 片选 |
+| `SCK` | `18` | MCU → 屏 | SPI 时钟 |
+| `SDA` | `23` | MCU → 屏 | SPI 数据（MOSI） |
+| `GND` | `GND` | — | 该排有两个 GND，任选 |
+| `5/3.3V` | **`3V3`** | — | **不要接 5V** |
+| 轻触开关 | `14` ↔ `GND` | — | 无外部电阻 |
+| 电池分压中点 | `32` | — | ADC，可选 |
+
+找孔不用数左右，认相邻关系：`4 → 16 → 17 → 5 → 18` 是**连续五个孔**；`23` 夹在 `22` 和 `GND` 之间；`3V3` 与 `EN` 同排相邻；`14` 与 `12` 相邻、`12` 另一侧是 `GND`。
+
+### 4.2 免焊方案（推荐先这样试）
+
+开发板排针已焊好，所以**只需焊一处**：给驱动板焊一根 `1×8` 2.54mm 排针（公头），再用**母对母杜邦线**直接插两端。接错拔线重插即可，试错成本为零。
+
+### 4.3 排针焊接步骤
+
+1. 烙铁 **330–350℃**，海绵擦净后先给烙铁头上薄锡。
+2. 排针**长脚朝下**穿过驱动板孔，短端在丝印面露出约 1mm，排针贴平板面（指甲或一点热熔胶临时顶住防歪）。
+3. 先焊**对角两个脚**定位，再依次焊其余；每个焊点烙铁停留 **1–2 秒**，锡呈小圆锥即停。
+4. 检查：**连锡**（两点间拉出锡桥）用吸锡带吸走；**虚焊**（锡呈豆腐渣、没润湿焊盘）补锡。
+5. 无水酒精 + 棉签擦掉助焊剂，对着 §4.1 逐个复核。
+
+工具：焊台或 30W 内热烙铁、0.6mm 含松香焊锡丝、助焊剂、吸锡带、斜口钳。
+
+### 4.4 排线方向（唯一不能装反的地方）
+
+排线上**空着没有铜箔的那一端就是 1 号脚**，必须与驱动板 FPC 座上标 `1` 的一侧对齐（屏幕排线和驱动板排线的 1 号脚都是悬空的）。
+
+操作：抬起座子卡扣 → 排线水平插到底 → 压回卡扣 → 轻拉不掉即到位。
+装反或没插到底的症状是**完全无反应**，不是花屏。
+
+### 4.5 按键
+
+`12×12×7.3` 轻触开关接 `IO14` 与 `GND` 之间。同侧两个引脚在开关内部是连通的，任选一只即可。
+
+⚠️ 板上的两个微动是 `EN`（复位）和 `Boot`（GPIO0），**都不是 14**，按它们固件不响应，必须外接按键或从 `14` 飞线。
+
+### 4.6 LED
+
+代码驱动的是 `PIN_LED_R`，**低有效还是高有效取决于板型**，由 [wiring.h](./include/wiring.h) 的 `LED_ON_LEVEL` 决定：
+
+| 板型 | LED 引脚 | 点亮电平 |
+|---|---|---|
+| ESP32-DevKitC-1（本机） | `IO2`（板载蓝灯） | HIGH |
+| LOLIN32 Lite | `IO22`（板载红灯） | LOW |
+
+原版 README 写的「LED->22(板载)」只对 LOLIN32 Lite 成立；DevKitC 板载灯在 IO2，所以旧固件在这块板子上**看不到状态灯**。现在把 `wiring.h` 顶部的 `#define ESP32_DEVKITC` / `#define LOLIN32_LITE` 二选一即可。
+
+不想接灯就完全忽略 LED，用串口日志判断状态（[§5.3](#53-看运行日志)）。
+
+### 4.7 电池与电压检测（台架调试必读）
+
+- 电池用 PH2.0 接头，注意正负极（板上有标注）；接反可用镊子调整插头方向。
+- 电压检测电路：`电池+ → 500K → IO32 → 500K → GND`，代码里 `voltage *= 2` 正好对应 1/2 分压（[src/battery.cpp:38](./src/battery.cpp#L38)）。
+- 保护逻辑（[src/main.cpp:121](./src/main.cpp#L121)）：`<3.0V` 直接休眠；`3.0–3.3V` 屏幕显示「电量不足，请充电！」后休眠；`>4.4V` 判定未接电池。
+
+⚠️ **只插 USB、没接分压电路时，`IO32` 是浮空输入，读数完全随机** —— 实测两次开机分别读到 `3044 mV` 和 `848 mV`。前者正好落进「3.0–3.3V → 警告并休眠」分支，会让设备**在开机阶段直接睡掉，连 WiFi 配网都走不到**。
+
+因此 [wiring.h](./include/wiring.h) 增加了 `BATTERY_CHECK` 开关，当前默认为 **`0`（关闭，USB 台架模式）**：
+
+| 场景 | `BATTERY_CHECK` |
+|---|---|
+| 只插 USB 调试、配网、验证刷屏 | `0` |
+| 装好电池 + 2×500K 分压电路，正式使用 | `1`（否则失去过放保护，会损坏电芯） |
+
+改完需重新烧录一次。串口里出现 `USB 台架模式` 就说明开关生效了。
+
+
+---
+
+## 5. 烧录
+
+### 5.1 日常一步烧录
+
+```
+⌃⌥U   (Control+Option+U)   PlatformIO: Upload
+```
+
+或点底部状态栏 **✓ 右边那个 →**。它 = 编译 + 烧录 + 自动复位，不需要先单独 Build。
+
+成功的标志：
+
+```
+Wrote 1698448 bytes ... at 0x00010000 in 26.9 seconds
+Hash of data verified.
+Hard resetting via RTS pin...
+======== [SUCCESS] ========
+```
+
+`bootloader.bin → 0x1000`、`partitions.bin → 0x8000`、`firmware.bin → 0x10000` 三段由 PlatformIO 自动写入，不用像 flash_download_tool 那样手点地址。
+
+烧完想直接看日志：`⌘⇧P` → `PlatformIO: Upload and Monitor`。
+
+### 5.2 命令行等价做法
+
+```bash
+cd path/to/tdisplay
+pio run -e z98 -t upload              # 编译并烧录
+pio run -e z98 -t upload -t monitor   # 烧完顺便开监视
+pio run -e z98                        # 只编译
+pio run -t clean                      # 清空重建（会触发 6 分钟全量编译，别乱点）
+```
+
+只插一块板时端口自动识别；插了多个设备就显式指定：
+
+```bash
+pio run -e z98 -t upload --upload-port /dev/cu.usbserial-0001
+```
+
+### 5.3 看运行日志
+
+```
+⌃⌥S   (Control+Option+S)   Serial Monitor    # 波特率 115200 已在 ini 配好
+```
+
+或 `pio device monitor`。⚠️ `pio device monitor` 需要真实终端，脚本 / 管道里跑不了。
+
+### 5.4 用 Espressif flash_download_tool 整片烧（可选）
+
+[Flash Download Tools](https://www.espressif.com/en/support/download/other-tools?keys=flash+download+tools) 适合批量生产或板子被刷坏救砖：
+
+1. 选择文件与地址：`bootloader.bin@0x1000`、`partitions.bin@0x8000`、`firmware.bin@0x10000`（bootloader 与 partitions 烧过一次后不必重复）。
+2. 配置 Flash 参数（DIO / 40MHz / 4MB）。
+3. 选串口与波特率，先「擦除」，再「开始烧录」。
+
+> **文件前面的勾必须打上，否则不会写入。**
+
+注意：[extra_script.py](./extra_script.py) 里写好的 `merge_bin`（合并成单个整片镜像）**目前没有挂载**到 `platformio.ini`，所以 `dist/firmware.bin` 不会自动生成；且它引用的 `littlefs.bin` 在本项目并不存在。要用整片镜像需手动补 `extra_scripts` 并去掉 littlefs 项。
+
+---
+
+## 6. 首次使用与配网
+
+### 6.1 全新板子：自动开热点（无需按键）
+
+新固件在 `setup()` 里先查 NVS 有没有存过 WiFi 账号：
+
+- **没存过** → 直接广播配置热点 **`T-Display` / 密码 `password`**，阻塞等待最多 **180 秒**。手机或电脑连上后浏览器会自动弹出配置页，没弹出就手动开 `http://192.168.4.1`。
+- **存过** → 只尝试连接已保存的网络，10 秒连不上就走「无 WiFi」流程并尽快休眠，**不会**开热点（省电，避免每次定时唤醒都长时间挂着 AP）。
+
+这条改动解决的是老版本的一个死锁：原固件 `setEnableConfigPortal(false)`，全新板子第一次上电既连不上网也不开热点，**必须先把按键焊好、双击**才能配网。
+
+### 6.2 随时进配置：双击按键
+
+设备正常运行中（LED 常亮）**双击**按键 → 出现 `T-Display` / `password` 热点，180 秒无操作自动休眠。配置状态下再双击 = 重启。
+
+### 6.3 配置项说明
+
+进入 `Param` 页面后各字段：
+
+- **周首日**：`0` 周日（默认）；`1` 周一。
+- **和风天气 Host**：自己控制台里的专属域名，形如 `******.re.qweatherapi.com`。
+- **和风天气 API Key**：置空则天气不刷新。
+- **天气类型**：`0` 每日天气（每天凌晨刷新一次）；`1` 实时天气（每两小时刷新一次）。
+- **位置 ID**：城市 ID 或经纬度。例 `101010100` 或 `116.41,39.92`。[城市 ID 列表](./assets/file/China-City-List-latest.csv)
+- **倒数日**：名称不超过 4 个中文字符，日期用 `yyyyMMdd`。名称为空则不显示。日历会显示「距\*\*\*\*还有\*\*天」。
+- **日期 Tag**：格式 `yyyyMMddx`。`yyyy` 设 `0000` 表示每年，`MM` 设 `00` 表示每月；`x` 为图标：`a` 书签 / `b` 金钱 / `c` 笑脸 / `d` 警告。最多 3 个，用 `;` 分隔。
+  例：`00000015b;00000312a` = 每月 15 日显示 `$`，每年 3 月 12 日显示书签。
+- **课程表**：多段用 `;` 分隔，分隔符必须是**英文符号**。
+  1. 课程数段：三位数字，分别是上午 / 下午 / 晚上课程数，不可省略，如 `430`。
+  2. 每日课程：首位为星期数，后接当日课程，用 `,` 分隔。
+  3. 样例：`430;一,语文,数学,体育,美术,科学,综合;二,数学,语文,英语,体育,音乐,德法;三,数学,英语,科学,语文,体育,书法,音乐;四,语文,数学,信息,劳动,德法,体育;五,英语,语文,数学,美术,心理,体育;`
+  4. 课程表非空时，单击按键可在「月历 / 课程表」间切换。
+- 保存配置后系统自动重启。
+
+其他菜单：**Update** 走 OTA 升级（浏览器里选固件文件上传）；**Restart** 重启；**Info** 看硬件信息、可清除已存 WiFi；**Exit** 退出配置。
+
+---
+
+## 7. 按键与 LED 语义
+
+### 7.1 按键
+
+| 操作 | 运行中 | 休眠中 | 配置中 |
+|---|---|---|---|
+| **单击** | 强制刷新 / 在月历与课程表间切换 | 唤醒并刷新月历 | 无动作 |
+| **双击** | 进入系统配置（并强制停止 WiFi 相关任务） | — | 重启 |
+| **长按**（3 秒） | 清除配置信息（WiFi 密钥除外）与缓存并重启 | — | — |
+
+### 7.2 LED
+
+| 状态 | 含义 |
+|---|---|
+| 快闪（约每秒两次） | 启动中，正在连 WiFi |
+| 常亮 | WiFi 已连接 |
+| 慢闪（每两秒一次） | WiFi 连接失败，10 秒后休眠 |
+| 三短闪一长灭 | 系统配置中，3 分钟超时休眠 |
+| 熄灭 | 系统休眠 |
+
+---
+
+## 8. 工作原理与功耗
+
+[src/main.cpp:164](./src/main.cpp#L164) 的 `loop()` 是一个状态机：
+
+```
+WiFi 连接 → SNTP 校时 → 抓天气 → 准备日历数据 → 刷屏（独立 FreeRTOS 任务）
+          → 屏幕完成后 WiFi.mode(WIFI_OFF) → 深度休眠
+```
+
+- 休眠唤醒源两个：定时器 + 按键（`ext0`，`IO14` 拉低）。
+- 唤醒间隔：未配 Key 或选「每日天气」→ 睡到次日凌晨；选「实时天气」→ 睡到下一个偶数小时。
+- 定时器唤醒若落在 23:50 之后，直接再睡，避免跨天边界错乱。
+- 休眠前会 `gpio_reset_pin()` 掉 SPI 相关引脚，单脚约省 8µA；`RTC_PERIPH` 不能关，否则按键唤醒失效。
+- **刷屏完成后设备立刻深睡，串口随之静默** —— 这是正常现象，按一下按键即可唤醒并重刷。
+- GDEY042Z98 的 `hasFastPartialUpdate = false`，每次都是全刷，白闪几下属正常。
+
+---
+
+## 9. 故障排查
+
+| 现象 | 原因与处理 |
+|---|---|
+| 编译要 6 分钟以上 | 状态栏环境是 `Default`，四个环境全编。切 `z98`（[§3](#3-选对编译环境重要)） |
+| 顶部编辑器标签的 ▷ 按钮没用 | 那是 Code Runner，与烧录无关 |
+| `Failed to connect to ESP32: No serial data received` | 板子掉线 / 没插好；`pio device list` 确认端口还在。重新插拔，仍失败就降速 `--upload-speed 115200` |
+| `Connecting........_____.....` 反复重试 | 按住 `Boot` 再点 Upload，松手即进下载模式；或换一根**数据线**（很多 Type-C 线只能充电） |
+| `Could not open /dev/cu.usbserial-0001` | 串口被 Serial Monitor 占用，先关监视 |
+| 屏幕毫无反应，日志卡在 busy 超时 | `BUSY` 没接好，或排线装反 / 没插到底 |
+| 初始化不返回、一直 busy | `RST` 没接 |
+| 花屏 / 负片 / 黑白颠倒 | 编译环境（屏型号）选错，换 `z21` / `z15` / `1680` 各试一次 |
+| 只有局部区域刷新 | `CS` 接触不良 |
+| 按键完全无反应 | 接到了 `0`（Boot 键），应接 `14` |
+| 开机只闪一句「电量不足，请充电！」就没动静了 | `IO32` 浮空读到假电压，触发低电休眠。把 `BATTERY_CHECK` 设为 `0`（[§4.7](#47-电池与电压检测台架调试必读)） |
+| 找不到 `T-Display` 热点 | 说明 NVS 里已存过 WiFi，固件不会再自动开热点（省电设计）；改用双击按键进配置（[§6.2](#62-随时进配置双击按键)），或在 `Info` 页清除 WiFi 密钥 |
+| 状态灯不亮 | 板型选错：DevKitC 板载灯在 `IO2`，见 [§4.6](#46-led) |
+| 代码满屏红色波浪线 | 改过 `platformio.ini` 后索引过期：`⌘⇧P` → `PlatformIO: Rebuild IntelliSense Index` |
+| 天气一直不更新 | 和风 Host / Key / 位置 ID 有误，或 Key 留空；看串口 `Get weather failed, error:` 后的 code |
+
+---
+
+## 10. 构建与发布
+
+```bash
+./bin/build.sh 1.2.0
+```
+
+脚本会 `pio run -t clean`，然后用 `-DJ_VERSION="1.2.0"` 依次编 `z98 / z21 / z15 / 1680`，把产物拷成 `dist/tdisplay_1.2.0_<env>.bin` 及 `dist/bootloader.bin`、`dist/partitions.bin`。
+
+- [include/version.h](./include/version.h) 里的 `1.1.9` 只是兜底值，正式构建由脚本注入。
+- 发布脚本显式指定 `-e`，不受 `default_envs = z98` 影响。
+
+---
+
+## 11. 针对实物的代码调整
+
+本次按实测硬件（DevKitC-1 + CP2102 + GDEY042Z98）做的改动：
+
+| 文件 | 改动 | 原因 |
+|---|---|---|
+| [include/wiring.h](./include/wiring.h) | ① 新增 `ESP32_DEVKITC` / `LOLIN32_LITE` 板型开关，LED 引脚与点亮电平随板型切换；SPI / 按键 / ADC 引脚提为公共段。② 新增 `BATTERY_CHECK` 开关，默认 `0` | ① DevKitC 板载灯在 `IO2` 且高电平点亮，原代码写死 `IO22` 低电平，状态灯完全看不到。② `IO32` 浮空读数随机（实测 `3044 mV` / `848 mV`），会误触发低电休眠导致无法配网 |
+| [src/led.cpp](./src/led.cpp) | 硬编码的 `HIGH/LOW` 全部换成 `LED_ON_LEVEL` / `LED_OFF_LEVEL`；`led_init()` 上电先熄灭 | 配合板型开关，消除上电灯态不确定 |
+| [src/main.cpp](./src/main.cpp) | ① 新增 `wifi_has_saved_credential()`；首次无凭据时自动开启带密码配置热点（180 秒超时），有凭据时维持原「快失败、快休眠」行为；双击进配置时显式 `setConfigPortalTimeout(0)`。② 电量判断整段包进 `#if BATTERY_CHECK` | ① 原版全新板不开热点，没焊按键就无法配网；WiFiManager 的 `getWiFiIsSaved()` 依赖 `WiFi_hasAutoConnect()`，该符号只在 ESP8266 core 存在，ESP32 下调用会链接失败，故用 `esp_wifi_get_config()` 自行读取。② 台架模式跳过会误判的低电休眠 |
+| [platformio.ini](./platformio.ini) | `default_envs` 由四个环境改为 `z98` | 新手点 Build/Upload 不再把四个环境全编一遍（25 分钟 → 15 秒） |
+
+实机验证（DevKitC-1 + GDEY042Z98，`pio run -e z98 -t upload` 后复位抓串口）：
+
+```
+Battery: 848 mV
+[INFO]电量检测已关闭（wiring.h: BATTERY_CHECK=0），USB 台架模式。
+Saved WiFi SSID: []
+No WiFi saved. Opening config portal [T-Display / password] ...
+*wm:StartAP with SSID:  T-Display
+*wm:AP IP address: 192.168.4.1
+*wm:Starting Web Portal
+```
+
+---
+
+## 附录
+
+- **墨水屏驱动库**：GxEPD2 1.6.4 已 vendor 在 [lib/GxEPD2](./lib/GxEPD2)，含 `GxEPD2_420c_GDEY042Z98.h`（400×300，`hasColor = true`），代码通过 `GxEPD2_3C` 模板类驱动三色，**无需另外安装最新版库**。同理 `nongli`（农历 / 节气）与 `ArduinoUZlib`（gzip 解压）也已 vendor，可离线构建。
+- **外部依赖**：`U8g2_for_Adafruit_GFX`、`ArduinoJson@^7.2.0`、`WiFiManager@^2.0.17`、`OneButton@^2.6.1`。
+- **分区表**：[min_spiffs.csv](./min_spiffs.csv)，4MB Flash 布局，app 分区 1.875MB，当前固件占用 86%，加功能时注意余量。
+- **HTTPS 说明**：天气接口用 `wifiClient.setInsecure()` 跳过证书校验（[src/API.hpp:159](./src/API.hpp#L159)），只做只读公开数据，但如需加固可改为 CA 证书校验。
+- **原 README 引用但仓库中缺失的图片**：`assets/img/battery_adc.png`、`assets/img/flash_download_tool_guide.png`（分压电路与烧录工具截图），已用文字描述替代。
+- **外壳**：3D 打印，PLA / ABS 均可，[E-ink box2 v22.3mf](./assets/file/E-ink%20box2%20v22.3mf)。

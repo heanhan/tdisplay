@@ -4,6 +4,7 @@
 #include <WiFiManager.h>
 
 #include "esp_sleep.h"
+#include "esp_wifi.h"
 
 #include <wiring.h>
 
@@ -14,6 +15,7 @@
 #include "weather.h"
 #include "screen_ink.h"
 #include "_preference.h"
+#include "web_portal.h"
 
 #include "version.h"
 
@@ -86,6 +88,20 @@ unsigned long TIME_TO_SLEEP = 180 * 1000;
 
 bool _wifi_flag = false;
 unsigned long _wifi_failed_millis;
+
+// NVS 中是否已保存过 WiFi 账号。WiFiManager 的 getWiFiIsSaved() 依赖
+// WiFi_hasAutoConnect()，该符号只存在于 ESP8266 core，ESP32 下链接不过，故自行读取。
+bool wifi_has_saved_credential() {
+    WiFi.mode(WIFI_STA); // 驱动未初始化时 esp_wifi_get_config 会返回 NOT_INIT
+    wifi_config_t conf = {};
+    if (esp_wifi_get_config(WIFI_IF_STA, &conf) != ESP_OK) {
+        return false;
+    }
+    String ssid = String((char*)conf.sta.ssid);
+    Serial.printf("Saved WiFi SSID: [%s]\r\n", ssid.c_str());
+    return ssid.length() > 0;
+}
+
 void setup() {
     delay(10);
     Serial.begin(115200);
@@ -105,6 +121,7 @@ void setup() {
     delay(100);
     int voltage = readBatteryVoltage();
     Serial.printf("Battery: %d mV\r\n", voltage);
+#if BATTERY_CHECK
     if(voltage < 2500) {
         Serial.println("[INFO]电池损坏或无ADC电路。");
     } else if(voltage < 3000) {
@@ -118,6 +135,9 @@ void setup() {
     } else if (voltage > 4400) {
         Serial.println("[INFO]未接电池。");
     }
+#else
+    Serial.println("[INFO]电量检测已关闭（wiring.h: BATTERY_CHECK=0），USB 台架模式。");
+#endif
 
     button.setClickMs(300);
     button.setPressMs(3000); // 设置长按的时长
@@ -130,10 +150,27 @@ void setup() {
     Serial.println("Wm begin...");
     led_fast();
     wm.setHostname("T-Display");
-    wm.setEnableConfigPortal(false);
     wm.setConnectTimeout(10);
-    if (wm.autoConnect()) {
+    // 自定义配网页面。必须在任何门户启动之前注册，首次自动热点和双击进配置两条入口共用。
+    web_portal_install(&wm);
+    if (wifi_has_saved_credential()) {
+        // 已配过网：连不上就直接走无WiFi流程，不开热点，避免每次定时唤醒都长时间耗电
+        wm.setEnableConfigPortal(false);
+    } else {
+        // 全新设备：按键可能还没焊接，双击进配置的入口不可用，
+        // 这里直接开一个带密码的配置热点，超时后同样按无WiFi流程休眠。
+        Serial.println("No WiFi saved. Opening config portal [T-Display / password] ...");
+        wm.setEnableConfigPortal(true);
+        wm.setConfigPortalTimeout(180);
+    }
+    if (wm.autoConnect("T-Display", "password")) {
         Serial.println("Connect OK.");
+        led_on();
+        _wifi_flag = true;
+    } else if (WiFi.status() == WL_CONNECTED) {
+        // 首次开热点那次：用户在新配网页面里连上了网，但走的是 /api/connect，
+        // WiFiManager 自己不知道，autoConnect 只会因门户超时而返回 false。
+        Serial.println("Portal timed out, but WiFi is up.");
         led_on();
         _wifi_flag = true;
     } else {
@@ -305,6 +342,7 @@ void buttonDoubleClick(void* oneButton) {
     // std::vector<const char *> menu = {"wifi","wifinoscan","info","param","custom","close","sep","erase","update","restart","exit"};
     std::vector<const char*> menu = { "wifi","param","update","sep","info","restart","exit" };
     wm.setMenu(menu); // custom menu, pass vector
+    wm.setConfigPortalTimeout(0); // 取消setup里为首次配网设置的超时，改由下面的空闲时间控制
     wm.setConfigPortalBlocking(false);
     wm.setBreakAfterConfig(true);
     wm.setPreSaveParamsCallback(preSaveParamsCallback);
